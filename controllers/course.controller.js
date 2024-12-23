@@ -128,7 +128,7 @@ exports.getRecommendedCourses = async (req, res) => {
   try {
     const { _id } = req.user;
 
-    const user = await User.findById(_id);
+    const user = await User.findById(_id).lean();
 
     if (!user) {
       return res.status(404).json({
@@ -145,14 +145,17 @@ exports.getRecommendedCourses = async (req, res) => {
       (course) => course._id
     );
 
-    // Step 1: Fetch courses with populated instructors
     const courses = await Course.find({
       _id: { $nin: purchasedCourseIds },
       standard: user.standard,
       published: true,
     })
+      .select(
+        "courseName imageUrls tags courseFeatures courseDuration price discountedPrice faq instructorId"
+      )
       .limit(10)
-      .populate("instructorId", "_id fullname qualification instructorImg");
+      .populate("instructorId", "fullname instructorInfo instructorImg")
+      .lean();
 
     if (courses.length === 0) {
       return res.status(404).json({
@@ -165,41 +168,40 @@ exports.getRecommendedCourses = async (req, res) => {
       });
     }
 
-    console.log(courses);
-
-    const coursesData = courses.map((course) => ({
-      ...course.toObject(),
-      numericPrice: parseFloat(course.price),
-      numericDiscountedPrice: parseFloat(course.discountedPrice),
-      discountPercentage:
-        ((course.price - course.discountedPrice) / course.price) * 100,
-    }));
-
-    const recommendedCourses = coursesData.map((course) => ({
+    const recommendedCourses = courses.map((course) => ({
       _id: course._id,
       courseName: course.courseName,
       allImageUrls: course.imageUrls,
       subjectsTags: course.tags,
       highlightPoints: course.courseFeatures,
       descriptionPoints: course.courseDescription,
-      instructorsInfo: course.instructorId,
+      instructorsInfo: {
+        name: course.instructorId?.fullname || "",
+        bio: course.instructorId?.instructorInfo || "",
+        profilePicture: course.instructorId?.instructorImg || "",
+      },
       price: {
-        amount: course.numericPrice,
-        discountPrice: course.numericDiscountedPrice,
+        amount: course.price,
+        discountPrice: course.discountedPrice,
         currency: "INR",
-        discountPercentage: parseFloat(course.discountPercentage.toFixed(2)),
+        discountPercentage: parseFloat(
+          (
+            ((course.price - course.discountedPrice) / course.price) *
+            100
+          ).toFixed(2)
+        ),
       },
       isPurchased: false,
       indicators: [
         {
-          key: "subjectIncluded",
-          value: course.tags.length,
-          displayName: "Subjects Included",
+          iconImg:
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+          displayName: `${course.tags.length} Subjects Covered`,
         },
         {
-          key: "courseDuration",
-          value: course.courseDuration,
-          displayName: "Course Duration",
+          iconImg:
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+          displayName: `${course.courseDuration} months`,
         },
       ],
       faq: course.faq,
@@ -208,7 +210,7 @@ exports.getRecommendedCourses = async (req, res) => {
     return res.status(200).json({
       status: "success",
       message: "Recommended Courses fetched successfully",
-      data: { recommendedCourses },
+      data: { courses: recommendedCourses },
     });
   } catch (error) {
     console.error("Error fetching courses:", error);
@@ -222,6 +224,7 @@ exports.getRecommendedCourses = async (req, res) => {
     });
   }
 };
+
 
 
 exports.getClasses = async (req, res) => {
