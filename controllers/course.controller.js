@@ -23,12 +23,8 @@ exports.getPurchasedCourses = async (req, res) => {
       });
     }
 
-    const purchasedCourseIds = user.purchasedCourses.map(
-      (course) => course._id
-    );
-
      const courses = await Course.find({
-       _id: { $in: purchasedCourseIds },
+       _id: { $in: user.purchasedCourses },
        standard: user.standard,
        published: true,
      })
@@ -111,12 +107,10 @@ exports.getRecommendedCourses = async (req, res) => {
       });
     }
 
-    const purchasedCourseIds = user.purchasedCourses.map(
-      (course) => course._id
-    );
+
 
     const courses = await Course.find({
-      _id: { $nin: purchasedCourseIds },
+      _id: { $nin: user.purchasedCourses },
       standard: user.standard,
       published: true,
     })
