@@ -151,7 +151,7 @@ exports.getRecommendedCourses = async (req, res) => {
       published: true,
     })
       .select(
-        "courseName imageUrls tags courseFeatures courseDuration price discountedPrice faq instructorId"
+        "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId"
       )
       .limit(10)
       .populate("instructorId", "_id fullname qualification instructorImg")
