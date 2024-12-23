@@ -54,12 +54,6 @@ exports.getPurchasedCourses = async (req, res) => {
       highlightPoints: course.courseFeatures,
       descriptionPoints: course.courseDescription,
       instructorsInfo: course.instructorId,
-      price: {
-        amount: "",
-        discountPrice: "",
-        currency: "",
-        discountPercentage: ""
-      },
       isPurchased: true,
       indicators: [
         {
