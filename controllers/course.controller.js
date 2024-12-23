@@ -154,7 +154,7 @@ exports.getRecommendedCourses = async (req, res) => {
         "courseName imageUrls tags courseFeatures courseDuration price discountedPrice faq instructorId"
       )
       .limit(10)
-      .populate("instructorId", "fullname instructorInfo instructorImg")
+      .populate("instructorId", "_id fullname qualification instructorImg")
       .lean();
 
     if (courses.length === 0) {
@@ -175,11 +175,7 @@ exports.getRecommendedCourses = async (req, res) => {
       subjectsTags: course.tags,
       highlightPoints: course.courseFeatures,
       descriptionPoints: course.courseDescription,
-      instructorsInfo: {
-        name: course.instructorId?.fullname || "",
-        bio: course.instructorId?.instructorInfo || "",
-        profilePicture: course.instructorId?.instructorImg || "",
-      },
+      instructorsInfo: course.instructorId,
       price: {
         amount: course.price,
         discountPrice: course.discountedPrice,
