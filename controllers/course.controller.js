@@ -145,97 +145,16 @@ exports.getRecommendedCourses = async (req, res) => {
       (course) => course._id
     );
 
-    const recommendedCourses = await Course.aggregate([
-      {
-        $match: {
-          _id: { $nin: purchasedCourseIds },
-          standard: user.standard,
-          published: true,
-        },
-      },
-      {
-        $limit: 3,
-      },
-      {
-        $lookup: {
-          from: "instructors",
-          localField: "instructorId",
-          foreignField: "_id",
-          as: "instructorsInfo",
-        },
-      },
-      {
-        $addFields: {
-          numericPrice: { $toDouble: "$price" },
-          numericDiscountedPrice: { $toDouble: "$discountedPrice" },
-          discountPercentage: {
-            $multiply: [
-              {
-                $divide: [
-                  {
-                    $subtract: [
-                      { $toDouble: "$price" },
-                      { $toDouble: "$discountedPrice" },
-                    ],
-                  },
-                  { $toDouble: "$price" },
-                ],
-              },
-              100,
-            ],
-          },
-          allImageUrls: "$imageUrls",
-          subjectsTags: "$tags",
-          highlightPoints: "$courseFeatures",
-          descriptionPoints: "$courseDescription",
-          isPurchased: false,
-          indicators: [
-            {
-              key: "subjectIncluded",
-              value: { $size: "$tags" },
-              displayName: "Subjects Included",
-            },
-            {
-              key: "courseDuration",
-              value: "$courseDuration",
-              displayName: "Course Duration",
-            },
-          ],
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          courseName: 1,
-          allImageUrls: 1,
-          subjectsTags: 1,
-          highlightPoints: 1,
-          descriptionPoints: 1,
-          instructorsInfo: {
-            $map: {
-              input: "$instructorsInfo",
-              as: "instructor",
-              in: {
-                name: "$$instructor.name",
-                bio: "$$instructor.bio",
-                profilePicture: "$$instructor.profilePicture",
-              },
-            },
-          },
-          price: {
-            amount: "$price",
-            discountPrice: "$discountedPrice",
-            currency: "INR",
-            discountPercentage: { $round: ["$discountPercentage", 2] },
-          },
-          isPurchased: 1,
-          indicators: 1,
-          faq: 1,
-        },
-      },
-    ]);
+    // Step 1: Fetch courses with populated instructors
+    const courses = await Course.find({
+      _id: { $nin: purchasedCourseIds },
+      standard: user.standard,
+      published: true,
+    })
+      .limit(10)
+      .populate("instructorId", "_id fullname qualification instructorImg");
 
-    if (recommendedCourses.length <= 0) {
+    if (courses.length === 0) {
       return res.status(404).json({
         status: "error",
         message: "No recommended courses found.",
@@ -246,10 +165,50 @@ exports.getRecommendedCourses = async (req, res) => {
       });
     }
 
+    console.log(courses);
+
+    const coursesData = courses.map((course) => ({
+      ...course.toObject(),
+      numericPrice: parseFloat(course.price),
+      numericDiscountedPrice: parseFloat(course.discountedPrice),
+      discountPercentage:
+        ((course.price - course.discountedPrice) / course.price) * 100,
+    }));
+
+    const recommendedCourses = coursesData.map((course) => ({
+      _id: course._id,
+      courseName: course.courseName,
+      allImageUrls: course.imageUrls,
+      subjectsTags: course.tags,
+      highlightPoints: course.courseFeatures,
+      descriptionPoints: course.courseDescription,
+      instructorsInfo: course.instructorId,
+      price: {
+        amount: course.numericPrice,
+        discountPrice: course.numericDiscountedPrice,
+        currency: "INR",
+        discountPercentage: parseFloat(course.discountPercentage.toFixed(2)),
+      },
+      isPurchased: false,
+      indicators: [
+        {
+          key: "subjectIncluded",
+          value: course.tags.length,
+          displayName: "Subjects Included",
+        },
+        {
+          key: "courseDuration",
+          value: course.courseDuration,
+          displayName: "Course Duration",
+        },
+      ],
+      faq: course.faq,
+    }));
+
     return res.status(200).json({
       status: "success",
       message: "Recommended Courses fetched successfully",
-      data: { courses: recommendedCourses },
+      data: { recommendedCourses },
     });
   } catch (error) {
     console.error("Error fetching courses:", error);
@@ -263,6 +222,7 @@ exports.getRecommendedCourses = async (req, res) => {
     });
   }
 };
+
 
 exports.getClasses = async (req, res) => {
   try {
