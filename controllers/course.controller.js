@@ -27,79 +27,19 @@ exports.getPurchasedCourses = async (req, res) => {
       (course) => course._id
     );
 
-    const purchasedCourses = await Course.aggregate([
-      {
-        $match: {
-          _id: { $in: purchasedCourseIds },
-          standard: user.standard,
-          published: true,
-        },
-      },
-      {
-        $limit: 3,
-      },
-      {
-        $lookup: {
-          from: "instructors",
-          localField: "instructorId",
-          foreignField: "_id",
-          as: "instructorsInfo",
-        },
-      },
-      {
-        $addFields: {
-          allImageUrls: "$imageUrls",
-          subjectsTags: "$tags",
-          highlightPoints: "$courseFeatures",
-          descriptionPoints: "$courseDescription",
-          isPurchased: true,
-          indicators: [
-            {
-              key: "subjectIncluded",
-              value: { $size: "$tags" },
-              displayName: "Subjects Included",
-            },
-            {
-              key: "courseDuration",
-              value: "$courseDuration",
-              displayName: "Course Duration",
-            },
-          ],
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          courseName: 1,
-          allImageUrls: 1,
-          subjectsTags: 1,
-          highlightPoints: 1,
-          descriptionPoints: 1,
-          instructorsInfo: {
-            $map: {
-              input: "$instructorsInfo",
-              as: "instructor",
-              in: {
-                name: "$$instructor.name",
-                bio: "$$instructor.bio",
-                profilePicture: "$$instructor.profilePicture",
-              },
-            },
-          },
-          price: {
-            amount: "$price",
-            discountPrice: "$discountedPrice",
-            currency: "INR",
-            discountPercentage: { $round: ["$discountPercentage", 2] },
-          },
-          isPurchased: 1,
-          indicators: 1,
-          faq: 1,
-        },
-      },
-    ]);
+     const courses = await Course.find({
+       _id: { $in: purchasedCourseIds },
+       standard: user.standard,
+       published: true,
+     })
+       .select(
+         "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId"
+       )
+       .limit(10)
+       .populate("instructorId", "_id fullname qualification instructorImg")
+       .lean();
 
-    if (purchasedCourses.length <= 0) {
+    if (courses.length <= 0) {
       return res.status(404).json({
         status: "error",
         message: "No purchased courses found.",
@@ -109,6 +49,36 @@ exports.getPurchasedCourses = async (req, res) => {
         },
       });
     }
+
+    const purchasedCourses = courses.map((course) => ({
+      _id: course._id,
+      courseName: course.courseName,
+      allImageUrls: course.imageUrls,
+      subjectsTags: course.tags,
+      highlightPoints: course.courseFeatures,
+      descriptionPoints: course.courseDescription,
+      instructorsInfo: course.instructorId,
+      price: {
+        amount: "",
+        discountPrice: "",
+        currency: "",
+        discountPercentage: ""
+      },
+      isPurchased: true,
+      indicators: [
+        {
+          iconImg:
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+          displayName: `${course.tags.length} Subjects Covered`,
+        },
+        {
+          iconImg:
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+          displayName: `${course.courseDuration} months`,
+        },
+      ],
+      faq: course.faq,
+    }));
 
     return res.status(200).json({
       status: "success",
@@ -220,8 +190,6 @@ exports.getRecommendedCourses = async (req, res) => {
     });
   }
 };
-
-
 
 exports.getClasses = async (req, res) => {
   try {
