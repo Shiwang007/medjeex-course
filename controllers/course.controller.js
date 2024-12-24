@@ -529,19 +529,21 @@ exports.getCoursesProgress = async (req, res) => {
     }
 
     const purchasedCourseMap = user.purchasedCourses.reduce((acc, course) => {
-      acc[course.courseId.toString()] = course.completedLectures.length || 0;
+      if (course.completedLectures.length > 0) {
+        acc[course.courseId.toString()] = course.completedLectures.length;
+      }
       return acc;
     }, {});
 
     const courseIds = Object.keys(purchasedCourseMap);
 
     if (courseIds.length === 0) {
-      return res.status(404).json({
+      return res.status(200).json({
         status: "error",
         message: "No started courses found.",
         error: {
           code: "NO_STARTED_COURSES",
-          details: "User has not started any courses.",
+          details: "User has not completed any lectures in any courses.",
         },
       });
     }
@@ -587,8 +589,9 @@ exports.getCoursesProgress = async (req, res) => {
     const startedCourses = courses.map((course) => ({
       courseId: course._id,
       courseName: course.courseName,
-      totalLectures: course.totalLectures,
-      completedLectures: purchasedCourseMap[course._id.toString()] || 0,
+      progress: Math.round(
+        (purchasedCourseMap[course._id.toString()] / course.totalLectures) * 100
+      ),
     }));
 
     return res.status(200).json({
@@ -598,6 +601,117 @@ exports.getCoursesProgress = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching started courses:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+};
+
+exports.saveLectures = async (req, res) => {
+  try {
+    const { _id } = req.user;
+    const { lectureId } = req.body;
+
+    if (!lectureId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Saving lecture Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID.",
+        }
+      })
+    }
+
+    const user = await User.findById({ _id });
+   
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Saving lecture Failed.",
+        error: {
+          code: "USER_NOT_FOUND",
+          details: "User does not exist.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById({ _id: lectureId });
+
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Saving lecture Failed.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "Lecture does not exist.",
+        },
+      });
+    }
+
+    await user.savedLectures.push(lectureId);
+    await user.save();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Lecture saved successfully"
+    });    
+  } catch (error) {
+    console.error("Error saving lectures:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+    
+  }
+}
+
+exports.markasCompleted = async (req, res) => {
+  try {
+    const { lectureId, courseId } = req.body;
+    const { _id } = req.user;
+
+    if (!lectureId || !courseId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Marking lecture as completed Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID or course ID.",
+        },
+      });
+    }
+
+    const user = await User.findOneAndUpdate(
+      {
+        _id,
+        "purchasedCourses.courseId": courseId,
+        "purchasedCourses.completedLectures": { $ne: lectureId },
+      },
+      {
+        $push: { "purchasedCourses.$.completedLectures": lectureId },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Marking lecture as completed Failed.",
+        error: {
+          code: "USER_NOT_FOUND",
+          details: "User or course not found.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Lecture marked as completed.",
+    });
+  } catch (error) {
+    console.error("Error marking lecture as completed:", error);
     return res.status(500).json({
       status: "error",
       message: "Internal server error.",
