@@ -20,20 +20,24 @@ exports.getPurchasedCourses = async (req, res) => {
           code: "USER_NOT_FOUND",
           details: "User does not exist.",
         },
-      });
-    }
+      });  
+    } 
 
-     const courses = await Course.find({
-       _id: { $in: user.purchasedCourses },
-       standard: user.standard,
-       published: true,
-     })
-       .select(
-         "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId"
-       )
-       .limit(10)
-       .populate("instructorId", "_id fullname qualification instructorImg")
-       .lean();
+    const purchasedCourseIds = user.purchasedCourses.map(
+      (course) => course.courseId
+    );
+
+    const courses = await Course.find({
+      _id: { $in: purchasedCourseIds },
+      standard: user.standard,
+      published: true,
+    })
+      .select(
+        "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId"
+      )
+      .limit(10)
+      .populate("instructorId", "_id fullname qualification instructorImg")
+      .lean();
 
     if (courses.length <= 0) {
       return res.status(404).json({
@@ -101,10 +105,12 @@ exports.getRecommendedCourses = async (req, res) => {
       });
     }
 
-
+      const purchasedCourseIds = user.purchasedCourses.map(
+        (course) => course.courseId
+      );
 
     const courses = await Course.find({
-      _id: { $nin: user.purchasedCourses },
+      _id: { $nin: purchasedCourseIds },
       standard: user.standard,
       published: true,
     })
@@ -193,23 +199,6 @@ exports.getClasses = async (req, res) => {
         },
       });
     }
-
-    const { _id } = req.user;
-
-    const user = await User.findById(_id);
-
-
-    if (!user.purchasedCourses.includes(courseId)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Fetching Classes Data Failed.",
-        error: {
-          code: "NO_CLASS_DATA",
-          details: "You have not purchased this course.",
-        },
-      });
-    }
-
 
     const subjects = await Chapter.aggregate([
       {
@@ -340,15 +329,15 @@ exports.getChaptersBySubject = async (req, res) => {
 
 exports.getLectureByChapter = async (req, res) => {
   try {
-    const { chapterId } = req.body;
+    const { chapterId, courseId } = req.body;
 
-    if (!chapterId) {
+    if (!chapterId || !courseId) {
       return res.status(400).json({
         status: "error",
         message: "Fetching Lectures Failed.",
         error: {
           code: "NO_CHAPTER_ID",
-          details: "Provide the required chapter ID.",
+          details: "Provide the required chapter ID or course ID.",
         },
       });
     }
@@ -365,9 +354,24 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
+    const course = await Course.findById(courseId);
+    if (!course) {
+      return res.status(404).json({
+        status: "error",
+        message: "Chapter not found.",
+        error: {
+          code: "Course_NOT_FOUND",
+          details: "The provided course ID does not match any record.",
+        },
+      });
+    }
+
     const lectures = await Lecture.aggregate([
       {
-        $match: { chapterId: new mongoose.Types.ObjectId(chapterId) },
+        $match: {
+          chapterId: new mongoose.Types.ObjectId(chapterId),
+          courseId: new mongoose.Types.ObjectId(courseId),
+        },
       },
       {
         $addFields: {
@@ -388,7 +392,6 @@ exports.getLectureByChapter = async (req, res) => {
           duration: 1,
           status: 1,
           lectureDate: 1,
-          lecturerName: 1,
           streamKey: 1,
         },
       },
@@ -508,4 +511,148 @@ exports.getNotesByLecture = async (req, res) => {
   }
 };
 
+exports.getCoursesProgress = async (req, res) => {
+  try {
+    const { _id } = req.user;
 
+    const user = await User.findById({ _id });
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Fetching Course Data Failed.",
+        error: {
+          code: "USER_NOT_FOUND",
+          details: "User does not exist.",
+        },
+      });
+    }
+
+    const purchasedCourseMap = user.purchasedCourses.reduce((acc, course) => {
+      acc[course.courseId.toString()] = course.completedLectures.length || 0;
+      return acc;
+    }, {});
+
+    const courseIds = Object.keys(purchasedCourseMap);
+
+    if (courseIds.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "No started courses found.",
+        error: {
+          code: "NO_STARTED_COURSES",
+          details: "User has not started any courses.",
+        },
+      });
+    }
+
+    const courses = await Course.aggregate([
+      {
+        $match: {
+          _id: { $in: courseIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        },
+      },
+      {
+        $lookup: {
+          from: "lectures",
+          localField: "_id",
+          foreignField: "courseId",
+          as: "courseLectures",
+        },
+      },
+      {
+        $addFields: {
+          totalLectures: { $size: "$courseLectures" },
+        },
+      },
+      {
+        $project: {
+          courseName: 1,
+          totalLectures: 1,
+        },
+      },
+    ]);
+
+    if (courses.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "No course details found.",
+        error: {
+          code: "COURSE_NOT_FOUND",
+          details: "No details available for the started courses.",
+        },
+      });
+    }
+
+    const startedCourses = courses.map((course) => ({
+      courseId: course._id,
+      courseName: course.courseName,
+      totalLectures: course.totalLectures,
+      completedLectures: purchasedCourseMap[course._id.toString()] || 0,
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      message: "Started Courses fetched successfully.",
+      data: startedCourses,
+    });
+  } catch (error) {
+    console.error("Error fetching started courses:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+};
+
+
+exports.buycourse = async (req, res) => {
+   try {
+     const { courseId, userId } = req.body;
+
+     if (!courseId || !userId) {
+       return res.status(400).json({
+         success: false,
+         message: "CourseId and UserId are required.",
+       });
+     }
+
+     const user = await User.findById(userId);
+
+     if (!user) {
+       return res.status(404).json({
+         success: false,
+         message: "User not found.",
+       });
+     }
+
+     const isAlreadyPurchased = user.purchasedCourses.some(
+       (course) => course.courseId.toString() === courseId
+     );
+
+     if (isAlreadyPurchased) {
+       return res.status(400).json({
+         success: false,
+         message: "Course is already purchased.",
+       });
+     }
+
+     user.purchasedCourses.push({
+       courseId,
+       completedLectures: [],
+     });
+
+     await user.save();
+
+     return res.status(200).json({
+       success: true,
+       message: "Course added to purchased list successfully.",
+     });
+   } catch (error) {
+     console.error("Error fetching Courses:", error);
+     return res.status(500).json({
+       status: "error",
+       message: "Internal server error.",
+     });
+   }
+}

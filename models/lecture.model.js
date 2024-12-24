@@ -49,7 +49,12 @@ const lectureSchema = new mongoose.Schema(
     streamKey: {
       type: String,
       required: false,
-    } 
+    },
+    courseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Course",
+      required: true,
+    },
   },
   {
     timestamps: true,
