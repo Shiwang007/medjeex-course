@@ -9,6 +9,7 @@ const chapterSchema = new mongoose.Schema(
         "Physics",
         "Chemistry",
         "Mathematics",
+        "Biology",
         "Botany",
         "Science",
         "Zoology",

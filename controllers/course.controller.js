@@ -184,7 +184,7 @@ exports.getClasses = async (req, res) => {
     const { courseId } = req.body;
 
     if (!courseId) {
-      return res.status(404).json({
+      return res.status(400).json({
         status: "error",
         message: "Fetching Classes Data Failed.",
         error: {
@@ -193,6 +193,23 @@ exports.getClasses = async (req, res) => {
         },
       });
     }
+
+    const { _id } = req.user;
+
+    const user = await User.findById(_id);
+
+
+    if (!user.purchasedCourses.includes(courseId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Fetching Classes Data Failed.",
+        error: {
+          code: "NO_CLASS_DATA",
+          details: "You have not purchased this course.",
+        },
+      });
+    }
+
 
     const subjects = await Chapter.aggregate([
       {
@@ -216,7 +233,7 @@ exports.getClasses = async (req, res) => {
     ]);
 
     if (!subjects.length) {
-      return res.status(404).json({
+      return res.status(200).json({
         status: "error",
         message: "No subjects found for the given course.",
         error: {
