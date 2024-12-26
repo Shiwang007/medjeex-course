@@ -343,7 +343,6 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
-    // Validate chapter existence
     const chapter = await Chapter.findById(chapterId);
     if (!chapter) {
       return res.status(404).json({
@@ -356,7 +355,6 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
-    // Validate course existence
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({
@@ -369,7 +367,6 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
-    // Get user data for completion and saved status
     const user = await User.findById(userId)
       .select("purchasedCourses savedLectures")
       .lean();
@@ -385,7 +382,6 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
-    // Find the purchased course entry for this course
     const purchasedCourse = user.purchasedCourses.find(
       (course) => course.courseId.toString() === courseId
     );
@@ -787,6 +783,149 @@ exports.markasCompleted = async (req, res) => {
     });
   }
 };
+
+exports.likeLecture = async (req, res) => {
+  try {
+    const { lectureId } = req.body;
+    const userId = req.user._id;
+
+    if (!lectureId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Liking lecture Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Lecture not found.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "The provided lecture ID does not match any record.",
+        },
+      });
+    }
+
+    const isLiked = lecture.liked.includes(userId);
+
+    let message;
+    if (isLiked) {
+      await Lecture.findByIdAndUpdate(
+        lectureId,
+        {
+          $pull: { liked: userId },
+        },
+        { new: true }
+      );
+      message = "Like removed successfully";
+    } else {
+      await Lecture.findByIdAndUpdate(
+        lectureId,
+        {
+          $addToSet: { liked: userId },
+          $pull: { disliked: userId },
+        },
+        { new: true }
+      );
+      message = "Lecture liked successfully";
+    }
+
+    const updatedLecture = await Lecture.findById(lectureId);
+    const likeCount = updatedLecture.liked.length;
+
+    return res.status(200).json({
+      status: "success",
+      message,
+      data: {
+        isLiked: !isLiked,
+        likeCount,
+      },
+    });
+  } catch (error) {
+    console.error("Error liking lecture:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+};
+
+exports.disLikeLecture = async (req, res) => {
+  try {
+    const { lectureId } = req.body;
+    const userId = req.user._id;
+
+    if (!lectureId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Liking lecture Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Lecture not found.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "The provided lecture ID does not match any record.",
+        },
+      });
+    }
+
+    const isDisLiked = lecture.disliked.includes(userId);
+
+    let message;
+    if (isDisLiked) {
+      await Lecture.findByIdAndUpdate(
+        lectureId,
+        {
+          $pull: { disliked: userId },
+        },
+        { new: true }
+      );
+      message = "dislike removed successfully";
+    } else {
+      await Lecture.findByIdAndUpdate(
+        lectureId,
+        {
+          $addToSet: { disliked: userId },
+          $pull: { liked: userId },
+        },
+        { new: true }
+      );
+      message = "Lecture disliked successfully";
+    }
+
+
+    return res.status(200).json({
+      status: "success",
+      message,
+      data: {
+        isDisLiked: !isDisLiked
+      },
+    });
+  } catch (error) {
+    console.error("Error liking lecture:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+};
+
+
 
 exports.buycourse = async (req, res) => {
    try {

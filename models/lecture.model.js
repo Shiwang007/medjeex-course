@@ -60,14 +60,14 @@ const lectureSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+        required: false,
       },
     ],
     disliked: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+        required: false,
       },
     ],
   },
