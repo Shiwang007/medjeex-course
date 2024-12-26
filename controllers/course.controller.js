@@ -716,12 +716,21 @@ exports.saveLectures = async (req, res) => {
       });
     }
 
-    await user.savedLectures.push(lectureId);
-    await user.save();
+    let message;
+
+    if (!user.savedLectures.includes(lectureId)) {
+      await user.savedLectures.push(lectureId);
+      await user.save();
+      message = "Lecture saved successfully";
+    } else {
+      await user.savedLectures.pull(lectureId);
+      await user.save();
+      message = "Lecture removed from saved list.";
+    }
 
     return res.status(200).json({
       status: "success",
-      message: "Lecture saved successfully"
+      message
     });    
   } catch (error) {
     console.error("Error saving lectures:", error);
@@ -748,6 +757,20 @@ exports.markasCompleted = async (req, res) => {
         },
       });
     }
+
+    const lecture = await Lecture.findById({ _id: lectureId });
+
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Marking lecture as completed failed.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "Lecture does not exist.",
+        },
+      });
+    }
+
 
     const user = await User.findOne({
       _id,
