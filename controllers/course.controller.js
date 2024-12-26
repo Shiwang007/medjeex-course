@@ -5,6 +5,7 @@ const Course = require("../models/course-admin.model");
 const Lecture = require("../models/lecture.model");
 const Notes = require("../models/notes.model");
 const mongoose = require("mongoose");
+const Comment = require("../models/comments.model");
 
 exports.getPurchasedCourses = async (req, res) => {
   try {
@@ -740,7 +741,7 @@ exports.markasCompleted = async (req, res) => {
     if (!lectureId || !courseId) {
       return res.status(400).json({
         status: "error",
-        message: "Marking lecture as completed Failed.",
+        message: "Marking lecture as completed failed.",
         error: {
           code: "NO_LECTURE_ID",
           details: "Provide the required lecture ID or course ID.",
@@ -748,22 +749,15 @@ exports.markasCompleted = async (req, res) => {
       });
     }
 
-    const user = await User.findOneAndUpdate(
-      {
-        _id,
-        "purchasedCourses.courseId": courseId,
-        "purchasedCourses.completedLectures": { $ne: lectureId },
-      },
-      {
-        $push: { "purchasedCourses.$.completedLectures": lectureId },
-      },
-      { new: true }
-    );
+    const user = await User.findOne({
+      _id,
+      "purchasedCourses.courseId": courseId,
+    });
 
     if (!user) {
       return res.status(404).json({
         status: "error",
-        message: "Marking lecture as completed Failed.",
+        message: "Marking lecture as completed failed.",
         error: {
           code: "USER_NOT_FOUND",
           details: "User or course not found.",
@@ -771,9 +765,41 @@ exports.markasCompleted = async (req, res) => {
       });
     }
 
+    // Get the purchased course
+    const purchasedCourse = user.purchasedCourses.find(
+      (course) => course.courseId.toString() === courseId
+    );
+
+    if (!purchasedCourse) {
+      return res.status(404).json({
+        status: "error",
+        message: "Course not found in user's purchased courses.",
+      });
+    }
+
+    const isLectureCompleted =
+      purchasedCourse.completedLectures.includes(lectureId);
+
+    const updateOperation = isLectureCompleted
+      ? { $pull: { "purchasedCourses.$.completedLectures": lectureId } }
+      : { $push: { "purchasedCourses.$.completedLectures": lectureId } };
+
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id,
+        "purchasedCourses.courseId": courseId,
+      },
+      updateOperation,
+      { new: true }
+    );
+
+    const message = isLectureCompleted
+      ? "Lecture marked as not completed."
+      : "Lecture marked as completed.";
+
     return res.status(200).json({
       status: "success",
-      message: "Lecture marked as completed.",
+      message,
     });
   } catch (error) {
     console.error("Error marking lecture as completed:", error);
@@ -925,7 +951,173 @@ exports.disLikeLecture = async (req, res) => {
   }
 };
 
+exports.addLectureComments = async (req, res) => {
+  try {
+    const { lectureId, userMessage } = req.body;
+    const userId = req.user._id;
 
+    if (!lectureId || !userMessage) {
+      return res.status(400).json({
+        status: "error",
+        message: "Commenting on lecture Failed.",
+        error: {
+          code: "INVALID_INPUT",
+          details: "Provide both lecture ID and comment message.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Lecture not found.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "The provided lecture ID does not match any record.",
+        },
+      });
+    }
+
+    const newComment = await Comment.create({
+      lectureId,
+      userId,
+      userMessage,
+    });
+
+    return res.status(201).json({
+      status: "success",
+      message: "Comment added successfully",
+    });
+  } catch (error) {
+    console.error("Error commenting on lecture:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        details: "An unexpected error occurred while adding the comment.",
+      },
+    });
+  }
+};
+
+exports.getLectureComments = async (req, res) => {
+  try {
+    const { lectureId } = req.body;
+    const userId = req.user._id;
+
+    if (!lectureId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Fetching Comments Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID.",
+        },
+      });
+    }
+
+    const comments = await Comment.find({ lectureId })
+      .populate("userId", "_id username imageUrl")
+      .lean();
+
+    if (!comments.length) {
+      return res.status(404).json({
+        status: "error",
+        message: "No comments found for the given lecture.",
+        error: {
+          code: "NO_COMMENTS_FOUND",
+          details: "Ensure the lecture ID is correct and try again.",
+        },
+      });
+    }
+
+    const commentsWithLikeInfo = comments.map((comment) => ({
+      ...comment,
+      isLiked: comment.likes?.includes(userId),
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      message: "Comments fetched successfully.",
+      data: commentsWithLikeInfo,
+    });
+  } catch (error) {
+    console.error("Error fetching comments:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal Server Error",
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        details: "An unexpected error occurred. Please try again later.",
+      },
+    });
+  }
+};
+
+exports.getNestedComments = async (req, res) => {
+  try {
+    const { commentId, lectureId } = req.body;
+    const userId = req.user._id;
+
+    if (!commentId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Fetching Nested Comments Failed.",
+        error: {
+          code: "NO_COMMENT_ID",
+          details: "Provide the required comment ID.",
+        },
+      });
+    }
+
+    const comment = await Comment.findOne({ _id: commentId, lectureId })
+      .populate({
+        path: "otherComments",
+        populate: {
+          path: "userId",
+          select: "_id username imageUrl",
+        },
+      })
+      .select("otherComments")
+      .lean();
+
+    if (!comment || !comment.otherComments.length) {
+      return res.status(404).json({
+        status: "error",
+        message: "No nested comments found for the given comment.",
+        error: {
+          code: "NO_NESTED_COMMENTS_FOUND",
+          details: "Ensure the comment ID is correct and try again.",
+        },
+      });
+    }
+
+    const otherCommentsWithLikeInfo = comment.otherComments.map(
+      (nestedComment) => ({
+        ...nestedComment,
+        isLiked: nestedComment.likes?.includes(userId),
+      })
+    );
+
+    return res.status(200).json({
+      status: "success",
+      message: "Nested Comments fetched successfully.",
+      data: otherCommentsWithLikeInfo,
+    });
+  } catch (error) {
+    console.error("Error fetching nested comments:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal Server Error",
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        details: "An unexpected error occurred. Please try again later.",
+      },
+    });
+  }
+};
 
 exports.buycourse = async (req, res) => {
    try {
