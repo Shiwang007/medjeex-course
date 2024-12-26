@@ -42,10 +42,11 @@ const lectureSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
-    lecturerName: {
-      type: String,
+    lecturerId: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Instructor",
       required: true,
-    },
+    }],
     streamKey: {
       type: String,
       required: false,
@@ -55,6 +56,20 @@ const lectureSchema = new mongoose.Schema(
       ref: "Course",
       required: true,
     },
+    liked: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+    ],
+    disliked: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+    ],
   },
   {
     timestamps: true,

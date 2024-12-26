@@ -15,18 +15,13 @@ const commentSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  likes: {
-    type: Number,
-    required: false,
-    default: 0,
-    min: 0,
-  },
-  dislikes: {
-    type: Number,
-    required: false,
-    default: 0,
-    min: 0,
-  },
+  likes: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  ],
   otherComments: [
     {
       type: mongoose.Schema.Types.ObjectId,

@@ -330,6 +330,7 @@ exports.getChaptersBySubject = async (req, res) => {
 exports.getLectureByChapter = async (req, res) => {
   try {
     const { chapterId, courseId } = req.body;
+    const userId = req.user._id;
 
     if (!chapterId || !courseId) {
       return res.status(400).json({
@@ -342,6 +343,7 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
+    // Validate chapter existence
     const chapter = await Chapter.findById(chapterId);
     if (!chapter) {
       return res.status(404).json({
@@ -354,17 +356,43 @@ exports.getLectureByChapter = async (req, res) => {
       });
     }
 
+    // Validate course existence
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({
         status: "error",
-        message: "Chapter not found.",
+        message: "Course not found.",
         error: {
-          code: "Course_NOT_FOUND",
+          code: "COURSE_NOT_FOUND",
           details: "The provided course ID does not match any record.",
         },
       });
     }
+
+    // Get user data for completion and saved status
+    const user = await User.findById(userId)
+      .select("purchasedCourses savedLectures")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Fetching Lectures Failed.",
+        error: {
+          code: "USER_NOT_FOUND",
+          details: "User does not exist.",
+        },
+      });
+    }
+
+    // Find the purchased course entry for this course
+    const purchasedCourse = user.purchasedCourses.find(
+      (course) => course.courseId.toString() === courseId
+    );
+
+    const completedLectureIds = purchasedCourse
+      ? purchasedCourse.completedLectures.map((id) => id.toString())
+      : [];
 
     const lectures = await Lecture.aggregate([
       {
@@ -374,25 +402,66 @@ exports.getLectureByChapter = async (req, res) => {
         },
       },
       {
+        $lookup: {
+          from: "instructors",
+          localField: "lecturerId",
+          foreignField: "_id",
+          as: "instructors",
+        },
+      },
+      {
         $addFields: {
-          streamKey: {
+          videoStreamKey: {
             $cond: {
               if: { $eq: ["$status", "live"] },
               then: "$streamKey",
               else: null,
             },
           },
+          isLive: { $eq: ["$status", "live"] },
+          likeCount: { $size: "$liked" },
+          isLiked: {
+            $in: [new mongoose.Types.ObjectId(userId), "$liked"],
+          },
+          isDisLiked: {
+            $in: [new mongoose.Types.ObjectId(userId), "$disliked"],
+          },
+          markedAsCompleted: {
+            $in: [
+              "$_id",
+              completedLectureIds.map((id) => new mongoose.Types.ObjectId(id)),
+            ],
+          },
+          isSaved: {
+            $in: [
+              "$_id",
+              user.savedLectures.map(
+                (id) => new mongoose.Types.ObjectId(id.toString())
+              ),
+            ],
+          },
         },
       },
       {
         $project: {
-          _id: 1,
+          videoId: "$_id",
           videoTitle: 1,
           videoLink: 1,
-          duration: 1,
-          status: 1,
-          lectureDate: 1,
-          streamKey: 1,
+          videoStreamKey: 1,
+          isLive: 1,
+          instructors: {
+            _id: 1,
+            fullname: 1,
+            qualification: 1,
+            instructorImg: 1,
+          },
+          likeCount: 1,
+          isLiked: 1,
+          isDisLiked: 1,
+          markedAsCompleted: 1,
+          videoDescription: 1,
+          isSaved: 1,
+          _id: 0,
         },
       },
       { $sort: { lectureDate: 1 } },
@@ -770,83 +839,83 @@ exports.buycourse = async (req, res) => {
    }
 }
 
-exports.getPurchasedCourses2 = async (req, res) => {
-  try {
-    const { _id } = req.user;
+// exports.getPurchasedCourses2 = async (req, res) => {
+//   try {
+//     const { _id } = req.user;
 
-    const user = await User.findById(_id)
-      .populate({
-        path: "purchasedCourses.courseId",
-        match: {
-          published: true,
-        },
-        select:
-          "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId",
-        populate: {
-          path: "instructorId",
-          select: "_id fullname qualification instructorImg",
-        },
-      })
-      .lean();
+//     const user = await User.findById(_id)
+//       .populate({
+//         path: "purchasedCourses.courseId",
+//         match: {
+//           published: true,
+//         },
+//         select:
+//           "courseName imageUrls tags courseFeatures courseDuration courseDescription price discountedPrice faq instructorId",
+//         populate: {
+//           path: "instructorId",
+//           select: "_id fullname qualification instructorImg",
+//         },
+//       })
+//       .lean();
 
-    if (!user) {
-      return res.status(404).json({
-        status: "error",
-        message: "Fetching Purchased Course Data Failed.",
-        error: {
-          code: "USER_NOT_FOUND",
-          details: "User does not exist.",
-        },
-      });
-    }
+//     if (!user) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "Fetching Purchased Course Data Failed.",
+//         error: {
+//           code: "USER_NOT_FOUND",
+//           details: "User does not exist.",
+//         },
+//       });
+//     }
 
-    console.log(user.purchasedCourses)
+//     console.log(user.purchasedCourses)
 
-    const purchasedCourses = user.purchasedCourses.map((purchase) => ({
-      _id: purchase.courseId._id,
-      courseName: purchase.courseId.courseName,
-      allImageUrls: purchase.courseId.imageUrls,
-      subjectsTags: purchase.courseId.tags,
-      highlightPoints: purchase.courseId.courseFeatures,
-      descriptionPoints: purchase.courseId.courseDescription,
-      instructorsInfo: purchase.courseId.instructorId,
-      isPurchased: true,
-      indicators: [
-        {
-          iconImg:
-            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
-          displayName: `${purchase.courseId.tags.length} Subjects Covered`,
-        },
-        {
-          iconImg:
-            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
-          displayName: `${purchase.courseId.courseDuration} months`,
-        },
-      ],
-      faq: purchase.courseId.faq,
-    }));
+//     const purchasedCourses = user.purchasedCourses.map((purchase) => ({
+//       _id: purchase.courseId._id,
+//       courseName: purchase.courseId.courseName,
+//       allImageUrls: purchase.courseId.imageUrls,
+//       subjectsTags: purchase.courseId.tags,
+//       highlightPoints: purchase.courseId.courseFeatures,
+//       descriptionPoints: purchase.courseId.courseDescription,
+//       instructorsInfo: purchase.courseId.instructorId,
+//       isPurchased: true,
+//       indicators: [
+//         {
+//           iconImg:
+//             "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+//           displayName: `${purchase.courseId.tags.length} Subjects Covered`,
+//         },
+//         {
+//           iconImg:
+//             "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWxpYnJhcnktYmlnIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiLz48cGF0aCBkPSJNNyAzdjE4Ii8+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiLz48L3N2Zz4=",
+//           displayName: `${purchase.courseId.courseDuration} months`,
+//         },
+//       ],
+//       faq: purchase.courseId.faq,
+//     }));
 
-    if (purchasedCourses.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "No purchased courses found.",
-        error: {
-          code: "NO_COURSES",
-          details: "No purchased courses available for the user.",
-        },
-      });
-    }
+//     if (purchasedCourses.length === 0) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "No purchased courses found.",
+//         error: {
+//           code: "NO_COURSES",
+//           details: "No purchased courses available for the user.",
+//         },
+//       });
+//     }
 
-    return res.status(200).json({
-      status: "success",
-      message: "Purchased courses fetched successfully",
-      data: { courses: purchasedCourses },
-    });
-  } catch (error) {
-    console.error("Error fetching purchased courses:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Internal server error.",
-    });
-  }
-};
+//     return res.status(200).json({
+//       status: "success",
+//       message: "Purchased courses fetched successfully",
+//       data: { courses: purchasedCourses },
+//     });
+//   } catch (error) {
+//     console.error("Error fetching purchased courses:", error);
+//     return res.status(500).json({
+//       status: "error",
+//       message: "Internal server error.",
+//     });
+//   }
+// };
