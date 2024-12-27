@@ -952,6 +952,7 @@ exports.likeLecture = async (req, res) => {
       data: {
         isLiked: !isLiked,
         likeCount,
+        isDisliked: updatedLecture.disliked.includes(userId),
       },
     });
   } catch (error) {
@@ -1016,11 +1017,16 @@ exports.disLikeLecture = async (req, res) => {
     }
 
 
+     const updatedLecture = await Lecture.findById(lectureId);
+     const likeCount = updatedLecture.liked.length;
+
     return res.status(200).json({
       status: "success",
       message,
       data: {
-        isDisLiked: !isDisLiked
+        isDisLiked: !isDisLiked,
+        likeCount: likeCount,
+        isLiked: updatedLecture.liked.includes(userId),
       },
     });
   } catch (error) {

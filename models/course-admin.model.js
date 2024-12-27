@@ -85,7 +85,7 @@ const courseSchema = new mongoose.Schema(
       type: Boolean,
       required: true,
       default: false,
-    },  
+    },
     scheduledLecture: {
       type: Boolean,
       required: true,
@@ -107,7 +107,12 @@ const courseSchema = new mongoose.Schema(
     courseDuration: {
       type: String,
       required: true,
-    }
+    },
+    productMade: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
   },
   {
     timestamps: true,
