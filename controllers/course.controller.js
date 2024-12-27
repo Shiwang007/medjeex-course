@@ -528,7 +528,7 @@ exports.getNotesByLecture = async (req, res) => {
         $lookup: {
           from: "notes",
           localField: "_id",
-          foreignField: "lectureId",
+          foreignField: "LectureId",
           as: "notes",
         },
       },
@@ -576,6 +576,64 @@ exports.getNotesByLecture = async (req, res) => {
     });
   }
 };
+
+exports.getNotesByLectureId = async (req, res) => {
+  try {
+    const { lectureId } = req.body;
+
+    if (!lectureId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Fetching Notes Failed.",
+        error: {
+          code: "NO_LECTURE_ID",
+          details: "Provide the required lecture ID.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Lecture not found.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "The provided lecture ID does not match any record.",
+        },
+      });
+    }
+
+    const notes = await Notes.find({ LectureId: lectureId });
+
+    if (!notes.length) {
+      return res.status(404).json({
+        status: "error",
+        message: "No notes found for the given lecture.",
+        error: {
+          code: "NO_NOTES_FOUND",
+          details: "Ensure the lecture ID is correct and try again.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Notes fetched successfully.",
+      data: notes,
+    });
+  } catch (error) {
+    console.error("Error fetching notes by lecture ID:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal Server Error",
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        details: "An unexpected error occurred. Please try again later.",
+      },
+    });
+  }
+}
 
 exports.getCoursesProgress = async (req, res) => {
   try {
