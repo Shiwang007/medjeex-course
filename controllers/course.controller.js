@@ -535,11 +535,12 @@ exports.getNotesByLecture = async (req, res) => {
       {
         $project: {
           _id: 1,
-          lecturerName: 1,
+          videoTitle: 1,
           notes: {
             _id: 1,
-            noteTitle: 1,
-            noteContent: 1,
+            notesTitle: 1,
+            file: 1,
+            notesDescription: 1
           },
         },
       },
@@ -952,7 +953,7 @@ exports.likeLecture = async (req, res) => {
       data: {
         isLiked: !isLiked,
         likeCount,
-        isDisliked: updatedLecture.disliked.includes(userId),
+        isDisLiked: updatedLecture.disliked.includes(userId),
       },
     });
   } catch (error) {
