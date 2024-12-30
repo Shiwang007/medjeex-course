@@ -1090,6 +1090,61 @@ exports.addLectureComments = async (req, res) => {
   }
 };
 
+exports.addNestedComments = async (req, res) => {
+  try {
+    const { lectureId, userMessage, commentId } = req.body;
+    const userId = req.user._id;
+
+    if (!lectureId || !userMessage) {
+      return res.status(400).json({
+        status: "error",
+        message: "Commenting on lecture Failed.",
+        error: {
+          code: "INVALID_INPUT",
+          details: "Provide both lecture ID and comment message.",
+        },
+      });
+    }
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({
+        status: "error",
+        message: "Lecture not found.",
+        error: {
+          code: "LECTURE_NOT_FOUND",
+          details: "The provided lecture ID does not match any record.",
+        },
+      });
+    }
+
+    const newComment = await Comment.create({
+      lectureId,
+      userId,
+      userMessage,
+    });
+
+    const oldComment = await Comment.findOne({ lectureId: lectureId, _id: commentId });
+    oldComment.otherComments.push(newComment);
+    await oldComment.save()
+
+    return res.status(201).json({
+      status: "success",
+      message: "Nested comment added successfully",
+    });
+  } catch (error) {
+    console.error("Error commenting on lecture:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        details: "An unexpected error occurred while adding the comment.",
+      },
+    });
+  }
+}
+
 exports.getLectureComments = async (req, res) => {
   try {
     const { lectureId } = req.body;
@@ -1121,9 +1176,21 @@ exports.getLectureComments = async (req, res) => {
       });
     }
 
+    comments.sort((a, b) => {
+      const likeCountA = a.likes?.length || 0;
+      const likeCountB = b.likes?.length || 0;
+
+      if (likeCountB !== likeCountA) {
+        return likeCountB - likeCountA;
+      }
+
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
     const commentsWithLikeInfo = comments.map((comment) => ({
       ...comment,
       isLiked: comment.likes?.includes(userId),
+      likeCount: comment.likes.length
     }));
 
     return res.status(200).json({
@@ -1182,10 +1249,22 @@ exports.getNestedComments = async (req, res) => {
       });
     }
 
+     comment.sort((a, b) => {
+       const likeCountA = a.likes?.length || 0;
+       const likeCountB = b.likes?.length || 0;
+
+       if (likeCountB !== likeCountA) {
+         return likeCountB - likeCountA;
+       }
+
+       return new Date(b.createdAt) - new Date(a.createdAt);
+     });
+
     const otherCommentsWithLikeInfo = comment.otherComments.map(
       (nestedComment) => ({
         ...nestedComment,
         isLiked: nestedComment.likes?.includes(userId),
+        likeCount: nestedComment.likes.length,
       })
     );
 

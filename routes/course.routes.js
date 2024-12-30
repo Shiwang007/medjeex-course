@@ -1,6 +1,6 @@
 const express = require("express");
 const { authenticate } = require("../middlewares/auth");
-const { getPurchasedCourses, getRecommendedCourses, getClasses, getChaptersBySubject, getLectureByChapter, buycourse, getCoursesProgress, saveLectures, markasCompleted, likeLecture, disLikeLecture, addLectureComments, getLectureComments, getNestedComments, getNotesByLecture, getNotesByLectureId } = require("../controllers/course.controller");
+const { getPurchasedCourses, getRecommendedCourses, getClasses, getChaptersBySubject, getLectureByChapter, buycourse, getCoursesProgress, saveLectures, markasCompleted, likeLecture, disLikeLecture, addLectureComments, getLectureComments, getNestedComments, getNotesByLecture, getNotesByLectureId, addNestedComments } = require("../controllers/course.controller");
 
 const router = express.Router();
 
@@ -19,6 +19,7 @@ router.post("/dislike-lecture", authenticate, disLikeLecture);
 
 // comment routes
 router.post("/add-comment", authenticate, addLectureComments);
+router.post("/add-nested-comment", authenticate, addNestedComments);
 router.post("/lecture-comments", authenticate, getLectureComments);
 router.post("/nested-comments", authenticate, getNestedComments);
 
