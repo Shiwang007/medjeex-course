@@ -1166,13 +1166,10 @@ exports.getLectureComments = async (req, res) => {
       .lean();
 
     if (!comments.length) {
-      return res.status(404).json({
+      return res.status(200).json({
         status: "error",
         message: "No comments found for the given lecture.",
-        error: {
-          code: "NO_COMMENTS_FOUND",
-          details: "Ensure the lecture ID is correct and try again.",
-        },
+        data: []
       });
     }
 
@@ -1239,13 +1236,10 @@ exports.getNestedComments = async (req, res) => {
       .lean();
 
     if (!comment || !comment.otherComments.length) {
-      return res.status(404).json({
+      return res.status(200).json({
         status: "error",
         message: "No nested comments found for the given comment.",
-        error: {
-          code: "NO_NESTED_COMMENTS_FOUND",
-          details: "Ensure the comment ID is correct and try again.",
-        },
+        data: []
       });
     }
 
