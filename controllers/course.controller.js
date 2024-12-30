@@ -1167,7 +1167,7 @@ exports.getLectureComments = async (req, res) => {
 
     if (!comments.length) {
       return res.status(200).json({
-        status: "error",
+        status: "success",
         message: "No comments found for the given lecture.",
         data: []
       });
@@ -1237,7 +1237,7 @@ exports.getNestedComments = async (req, res) => {
 
     if (!comment || !comment.otherComments.length) {
       return res.status(200).json({
-        status: "error",
+        status: "success",
         message: "No nested comments found for the given comment.",
         data: []
       });
