@@ -1148,7 +1148,7 @@ exports.addNestedComments = async (req, res) => {
 exports.getLectureComments = async (req, res) => {
   try {
     const { lectureId } = req.body;
-    const userId = req.user._id;
+    const { _id:userId } = req.user;
 
     if (!lectureId) {
       return res.status(400).json({
@@ -1211,7 +1211,7 @@ exports.getLectureComments = async (req, res) => {
 exports.getNestedComments = async (req, res) => {
   try {
     const { commentId, lectureId } = req.body;
-    const userId = req.user._id;
+    const { _id:userId } = req.user;
 
     if (!commentId) {
       return res.status(400).json({
