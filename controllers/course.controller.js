@@ -1125,7 +1125,7 @@ exports.addNestedComments = async (req, res) => {
     });
 
     const oldComment = await Comment.findOne({ lectureId: lectureId, _id: commentId });
-    oldComment.otherComments.push(newComment);
+    oldComment.otherComments.push(newComment._id);
     await oldComment.save()
 
     return res.status(201).json({
@@ -1279,6 +1279,66 @@ exports.getNestedComments = async (req, res) => {
     });
   }
 };
+
+exports.likeComments = async (req, res) => {
+  try {
+    const { commentId } = req.body;
+
+    const { _id } = req.user;
+
+    if (!commentId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Liking comments Failed.",
+        error: {
+          code: "NO_COMMENT_ID",
+          details: "Provide the required comment ID.",
+        },
+      });
+    }
+
+    const comment = await Comment.findById({ _id: commentId });
+    
+    if (!comment) {
+      return res.status(404).json({
+        status: "error",
+        message: "Comment not found.",
+        error: {
+          code: "COMMENT_NOT_FOUND",
+          details: "The provided comment ID does not match any record.",
+        },
+      });
+    }
+
+    const isLiked = comment.likes.includes(_id);
+
+    let message;
+
+    if (isLiked) { 
+      await Comment.findByIdAndUpdate(commentId, { $pull: { likes: _id } }, { new: true })
+      message = "Like removed successfully";
+    } else {
+      await await Comment.findByIdAndUpdate(
+        commentId,
+        { $addToSet: { likes: _id } },
+        { new: true }
+      );
+      message = "Lecture liked successfully";
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message,
+    });
+
+  } catch (error) {
+    console.error("Error liking comments:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+}
 
 exports.buycourse = async (req, res) => {
    try {
