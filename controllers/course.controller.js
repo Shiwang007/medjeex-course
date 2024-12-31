@@ -1148,7 +1148,7 @@ exports.addNestedComments = async (req, res) => {
 exports.getLectureComments = async (req, res) => {
   try {
     const { lectureId } = req.body;
-    const { _id:userId } = req.user;
+    const userId = req.user._id;
 
     if (!lectureId) {
       return res.status(400).json({
@@ -1161,39 +1161,55 @@ exports.getLectureComments = async (req, res) => {
       });
     }
 
-    const comments = await Comment.find({ lectureId })
-      .populate("userId", "_id username imageUrl")
-      .lean();
+    const comments = await Comment.aggregate([
+      { $match: { lectureId: new mongoose.Types.ObjectId(lectureId) } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      {
+        $addFields: {
+          likeCount: { $size: "$likes" },
+          isLiked: {
+            $in: [new mongoose.Types.ObjectId(userId), "$likes"],
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          lectureId:1,
+          userMessage: 1,
+          createdAt: 1,
+          likeCount: 1,
+          isLiked: 1,
+          "user._id": 1,
+          "user.username": 1,
+          "user.imageUrl": 1,
+        },
+      },
+      {
+        $sort: { likeCount: -1, createdAt: -1 },
+      },
+    ]);
 
     if (!comments.length) {
       return res.status(200).json({
         status: "success",
         message: "No comments found for the given lecture.",
-        data: []
+        data: [],
       });
     }
-
-    comments.sort((a, b) => {
-      const likeCountA = a.likes?.length || 0;
-      const likeCountB = b.likes?.length || 0;
-
-      if (likeCountB !== likeCountA) {
-        return likeCountB - likeCountA;
-      }
-
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-
-    const commentsWithLikeInfo = comments.map((comment) => ({
-      ...comment,
-      isLiked: comment.likes?.includes(userId),
-      likeCount: comment.likes.length
-    }));
 
     return res.status(200).json({
       status: "success",
       message: "Comments fetched successfully.",
-      data: commentsWithLikeInfo,
+      data: comments,
     });
   } catch (error) {
     console.error("Error fetching comments:", error);
@@ -1211,7 +1227,7 @@ exports.getLectureComments = async (req, res) => {
 exports.getNestedComments = async (req, res) => {
   try {
     const { commentId, lectureId } = req.body;
-    const { _id:userId } = req.user;
+    const userId = req.user._id;
 
     if (!commentId) {
       return res.status(400).json({
@@ -1224,48 +1240,91 @@ exports.getNestedComments = async (req, res) => {
       });
     }
 
-    const comment = await Comment.findOne({ _id: commentId, lectureId })
-      .populate({
-        path: "otherComments",
-        populate: {
-          path: "userId",
-          select: "_id username imageUrl",
+    const result = await Comment.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(commentId),
+          lectureId: new mongoose.Types.ObjectId(lectureId),
         },
-      })
-      .select("otherComments")
-      .lean();
+      },
+      {
+        $lookup: {
+          from: "comments",
+          localField: "otherComments",
+          foreignField: "_id",
+          as: "nestedComments",
+        },
+      },
+      {
+        $unwind: { path: "$nestedComments", preserveNullAndEmptyArrays: true },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "nestedComments.userId",
+          foreignField: "_id",
+          as: "nestedComments.user",
+        },
+      },
+      {
+        $unwind: {
+          path: "$nestedComments.user",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          "nestedComments.likeCount": { $size: "$nestedComments.likes" },
+          "nestedComments.isLiked": {
+            $in: [new mongoose.Types.ObjectId(userId), "$nestedComments.likes"],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          nestedComments: { $push: "$nestedComments" },
+        },
+      },
+      {
+        $project: {
+          nestedComments: {
+            _id: 1,
+            lectureId: 1,
+            userMessage: 1,
+            createdAt: 1,
+            likeCount: 1,
+            isLiked: 1,
+            "user._id": 1,
+            "user.username": 1,
+            "user.imageUrl": 1,
+          },
+        },
+      },
+    ]);
 
-    if (!comment || !comment.otherComments.length) {
+    if (!result.length || !result[0].nestedComments.length) {
       return res.status(200).json({
         status: "success",
         message: "No nested comments found for the given comment.",
-        data: []
+        data: [],
       });
     }
 
-     comment.sort((a, b) => {
-       const likeCountA = a.likes?.length || 0;
-       const likeCountB = b.likes?.length || 0;
+    const sortedNestedComments = result[0].nestedComments.sort((a, b) => {
+      const likeCountA = a.likeCount || 0;
+      const likeCountB = b.likeCount || 0;
 
-       if (likeCountB !== likeCountA) {
-         return likeCountB - likeCountA;
-       }
-
-       return new Date(b.createdAt) - new Date(a.createdAt);
-     });
-
-    const otherCommentsWithLikeInfo = comment.otherComments.map(
-      (nestedComment) => ({
-        ...nestedComment,
-        isLiked: nestedComment.likes?.includes(userId),
-        likeCount: nestedComment.likes.length,
-      })
-    );
+      if (likeCountB !== likeCountA) {
+        return likeCountB - likeCountA;
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
 
     return res.status(200).json({
       status: "success",
       message: "Nested Comments fetched successfully.",
-      data: otherCommentsWithLikeInfo,
+      data: sortedNestedComments,
     });
   } catch (error) {
     console.error("Error fetching nested comments:", error);
@@ -1280,11 +1339,12 @@ exports.getNestedComments = async (req, res) => {
   }
 };
 
+
 exports.likeComments = async (req, res) => {
   try {
     const { commentId } = req.body;
 
-    const { _id } = req.user;
+    const userId = req.user._id;
 
     if (!commentId) {
       return res.status(400).json({
@@ -1310,17 +1370,17 @@ exports.likeComments = async (req, res) => {
       });
     }
 
-    const isLiked = comment.likes.includes(_id);
+    const isLiked = comment.likes.includes(userId);
 
     let message;
 
     if (isLiked) { 
-      await Comment.findByIdAndUpdate(commentId, { $pull: { likes: _id } }, { new: true })
+      await Comment.findByIdAndUpdate(commentId, { $pull: { likes: userId } }, { new: true })
       message = "Like removed successfully";
     } else {
       await await Comment.findByIdAndUpdate(
         commentId,
-        { $addToSet: { likes: _id } },
+        { $addToSet: { likes: userId } },
         { new: true }
       );
       message = "Lecture liked successfully";
@@ -1328,7 +1388,7 @@ exports.likeComments = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message,
+      message: "Comment liked successfully.",
     });
 
   } catch (error) {
