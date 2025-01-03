@@ -1178,12 +1178,15 @@ exports.getLectureComments = async (req, res) => {
           isLiked: {
             $in: [new mongoose.Types.ObjectId(userId), "$likes"],
           },
+          isCurrentUser: {
+            $eq: ["$userId", new mongoose.Types.ObjectId(userId)],
+          },
         },
       },
       {
         $project: {
           _id: 1,
-          lectureId:1,
+          lectureId: 1,
           userMessage: 1,
           createdAt: 1,
           likeCount: 1,
@@ -1191,10 +1194,15 @@ exports.getLectureComments = async (req, res) => {
           "user._id": 1,
           "user.username": 1,
           "user.imageUrl": 1,
+          isCurrentUser: 1,
         },
       },
       {
-        $sort: { likeCount: -1, createdAt: -1 },
+        $sort: {
+          isCurrentUser: -1, // First, sort by whether the comment is by the current user
+          likeCount: -1, // Then, sort by number of likes
+          createdAt: -1, // Finally, sort by creation date
+        },
       },
     ]);
 
@@ -1223,6 +1231,7 @@ exports.getLectureComments = async (req, res) => {
     });
   }
 };
+
 
 exports.getNestedComments = async (req, res) => {
   try {
@@ -1278,6 +1287,12 @@ exports.getNestedComments = async (req, res) => {
           "nestedComments.isLiked": {
             $in: [new mongoose.Types.ObjectId(userId), "$nestedComments.likes"],
           },
+          "nestedComments.isCurrentUser": {
+            $eq: [
+              "$nestedComments.userId",
+              new mongoose.Types.ObjectId(userId),
+            ],
+          },
         },
       },
       {
@@ -1298,6 +1313,7 @@ exports.getNestedComments = async (req, res) => {
             "user._id": 1,
             "user.username": 1,
             "user.imageUrl": 1,
+            isCurrentUser: 1,
           },
         },
       },
@@ -1311,13 +1327,24 @@ exports.getNestedComments = async (req, res) => {
       });
     }
 
+    // Sort nested comments first by current user, then by like count, and finally by creation date
     const sortedNestedComments = result[0].nestedComments.sort((a, b) => {
+      // First, sort by whether the comment is by the current user
+      if (a.isCurrentUser && !b.isCurrentUser) {
+        return -1;
+      }
+      if (!a.isCurrentUser && b.isCurrentUser) {
+        return 1;
+      }
+
+      // Then, sort by like count
       const likeCountA = a.likeCount || 0;
       const likeCountB = b.likeCount || 0;
-
       if (likeCountB !== likeCountA) {
         return likeCountB - likeCountA;
       }
+
+      // Finally, sort by creation date
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
@@ -1399,6 +1426,56 @@ exports.likeComments = async (req, res) => {
     });
   }
 }
+
+exports.deleteComment = async (req, res) => {
+  try {
+    const { commentId } = req.body;
+
+    if (!commentId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Deleting comments Failed.",
+        error: {
+          code: "NO_COMMENT_ID",
+          details: "Provide the required comment ID.",
+        },
+      });
+    }
+
+    const comment = await Comment.findById({ _id: commentId });
+
+    if (!comment) {
+      return res.status(404).json({
+        status: "error",
+        message: "Comment not found.",
+        error: {
+          code: "COMMENT_NOT_FOUND",
+          details: "The provided comment ID does not match any record.",
+        },
+      });
+    }
+
+    
+    if (comment.otherComments && comment.otherComments.length > 0) {
+      await Comment.deleteMany({
+        _id: { $in: comment.otherComments },
+      });
+    }
+
+    await Comment.findByIdAndDelete(commentId);
+
+    return res.status(200).json({
+      status: "success",
+      message: "Comment and its associated comments deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting comments:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error.",
+    });
+  }
+};
 
 exports.buycourse = async (req, res) => {
    try {
