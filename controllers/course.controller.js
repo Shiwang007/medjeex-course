@@ -1118,13 +1118,29 @@ exports.addNestedComments = async (req, res) => {
       });
     }
 
+    
+    const oldComment = await Comment.findOne({
+      lectureId: lectureId,
+      _id: commentId,
+    });
+
+    if (!oldComment) {
+      return res.status(404).json({
+        status: "error",
+        message: "Comment not found.",
+        error: {
+          code: "COMMENT_NOT_FOUND",
+          details: "The provided comment ID does not match any record.",
+        },
+      });
+    }
+
     const newComment = await Comment.create({
       lectureId,
       userId,
       userMessage,
     });
 
-    const oldComment = await Comment.findOne({ lectureId: lectureId, _id: commentId });
     oldComment.otherComments.push(newComment._id);
     await oldComment.save()
 
