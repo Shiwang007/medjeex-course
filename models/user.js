@@ -53,10 +53,23 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-  isUserVerified: {
+  isUserPhoneNumberVerified: {
     type: Boolean,
     required: true,
     default: false,
+  },
+  isUserEmailVerified: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
+  userOtp: {
+    type: String,
+    required: false,
+  },
+  otpExpires: {
+    type: Date,
+    required: false,
   },
   purchasedCourses: [
     {

@@ -19,6 +19,11 @@ const lectureSchema = new mongoose.Schema(
       enum: ["live", "recorded"],
       required: true,
     },
+    goLive: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     duration: {
       type: Number,
       required: true,
@@ -42,11 +47,13 @@ const lectureSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
-    lecturerId: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Instructor",
-      required: true,
-    }],
+    lecturerId: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Instructor",
+        required: true,
+      },
+    ],
     streamKey: {
       type: String,
       required: false,

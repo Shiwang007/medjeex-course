@@ -33,6 +33,7 @@ const courseSchema = new mongoose.Schema(
           "Botany",
           "Science",
           "Zoology",
+          "Biology",
         ],
         required: true,
       },
@@ -86,11 +87,6 @@ const courseSchema = new mongoose.Schema(
       required: true,
       default: false,
     },
-    scheduledLecture: {
-      type: Boolean,
-      required: true,
-      default: false,
-    },
     price: {
       type: String,
       required: false,
@@ -106,6 +102,11 @@ const courseSchema = new mongoose.Schema(
     },
     courseDuration: {
       type: String,
+      required: true,
+    },
+    courseIncharge: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CompanyUser",
       required: true,
     },
     productMade: {
